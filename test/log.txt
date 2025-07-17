@@ -1,0 +1,53 @@
+Using device: cuda
+Classes: ['cat', 'dog']
+
+Epoch 1/10
+------------------------------
+Train Loss: 0.5571  Acc: 0.7000
+Val Loss: 0.2006  Acc: 1.0000
+
+Epoch 2/10
+------------------------------
+Train Loss: 0.1257  Acc: 1.0000
+Val Loss: 0.0233  Acc: 1.0000
+
+Epoch 3/10
+------------------------------
+Train Loss: 0.0482  Acc: 1.0000
+Val Loss: 0.0025  Acc: 1.0000
+
+Epoch 4/10
+------------------------------
+Train Loss: 0.0489  Acc: 1.0000
+Val Loss: 0.0005  Acc: 1.0000
+
+Epoch 5/10
+------------------------------
+Train Loss: 0.0145  Acc: 1.0000
+Val Loss: 0.0002  Acc: 1.0000
+
+Epoch 6/10
+------------------------------
+Train Loss: 0.1693  Acc: 0.9000
+Val Loss: 0.0002  Acc: 1.0000
+
+Epoch 7/10
+------------------------------
+Train Loss: 0.0969  Acc: 0.9500
+Val Loss: 0.0005  Acc: 1.0000
+
+Epoch 8/10
+------------------------------
+Train Loss: 0.4424  Acc: 0.8000
+Val Loss: 0.0002  Acc: 1.0000
+
+Epoch 9/10
+------------------------------
+Train Loss: 0.0123  Acc: 1.0000
+Val Loss: 0.0004  Acc: 1.0000
+
+Epoch 10/10
+------------------------------
+Train Loss: 0.4732  Acc: 0.7500
+Val Loss: 0.0012  Acc: 1.0000
+Model saved to: model/resnet18_catdog.pth
