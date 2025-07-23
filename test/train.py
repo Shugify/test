@@ -27,6 +27,7 @@ config = {
 # 1. 开始一个新的 wandb run 来跟踪这个实验
 wandb.init(
     project="pytorch-catdog-classification", # 在wandb中显示的项目名称
+    entity="1165547599",  
     config=config # 传入超参数字典
 )
 
@@ -76,7 +77,9 @@ optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate) # 从w
 def train_model(model, criterion, optimizer, num_epochs=10):
     # 告诉wandb开始监控模型
     wandb.watch(model, criterion, log="all", log_freq=10)
-    
+    #log="all":同时记录梯度和参数(权重和偏置)
+    #log_freq=10:每10个训练批次(batch)记录一次
+
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         print("-" * 30)
