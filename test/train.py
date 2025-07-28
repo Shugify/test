@@ -1,116 +1,282 @@
-import os # 导入 'os' 模块，用于与操作系统交互，比如创建目录或拼接文件路径。
-import torch # 导入 PyTorch 的核心库，这是所有张量操作和神经网络构建的基础。
-import torch.nn as nn # 导入 PyTorch 的 'nn' 模块，它包含了所有神经网络的构建块（例如，全连接层 Linear, 卷积层 Conv2d）。
-import torch.optim as optim # 导入 'optim' 模块，它提供了各种优化算法（如 SGD, Adam）来更新模型的权重。
-from torchvision import datasets, models, transforms # 从 torchvision 库中导入特定的模块：
-# 'datasets' 用于常用的数据集（例如 ImageFolder，可以方便地加载按文件夹组织的图像数据）。
-# 'models' 用于预训练的模型（例如 ResNet）。
-# 'transforms' 用于图像的各种预处理和增强操作。
-from torch.utils.data import DataLoader # 导入 DataLoader，它能高效地以批次（batch）形式加载数据。
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import models, transforms
+from torch.utils.data import Dataset, DataLoader
+import wandb
+import json
+from PIL import Image
+import copy
+from tqdm import tqdm
+import time # 【计时】导入 time 模块
 
-# ---------- 路径配置 ---------- # 这是一个注释，表示以下是关于文件路径的配置。
-data_dir = 'dataset' # 定义你的图像数据集所在的根目录（例如，里面会有 'train' 和 'val' 子文件夹）。
-model_dir = 'model' # 定义训练好的模型将要保存的目录。
-os.makedirs(model_dir, exist_ok=True) # 如果 'model' 目录不存在，则创建它。'exist_ok=True' 参数表示如果目录已经存在，则不会引发错误。
+# ---------- 路径配置 ----------
+# ... (这部分不变)
+data_dir = 'new_dataset'
+model_dir = 'model'
+os.makedirs(model_dir, exist_ok=True)
 
-# ---------- 使用GPU ---------- # 注释，表示以下是关于设备（GPU/CPU）的设置。
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # 检查是否可用 CUDA（NVIDIA GPU 的并行计算平台）。如果可用，则使用 'cuda' 设备；否则，退回到 'cpu'（中央处理器）。
-print("Using device:", device) # 打印出当前将用于计算的设备是 GPU 还是 CPU。
 
-# ---------- 数据预处理 ---------- # 注释，表示以下是数据预处理的设置。
-data_transforms = { # 定义一个字典，包含训练集和验证集不同的数据转换（预处理）规则。
-    'train': transforms.Compose([ # 对训练数据应用一系列转换操作：
-        transforms.Resize((224, 224)), # 将图像大小统一调整为 224x224 像素。这是许多预训练模型（如 ResNet）的标准输入尺寸。
-        transforms.RandomHorizontalFlip(), # 以 0.5 的概率随机对图像进行水平翻转。这是一种数据增强技术，可以增加数据的多样性，帮助模型更好地泛化。
-        transforms.ToTensor(), # 将 PIL Image 或 NumPy ndarray 格式的图像转换为 PyTorch 张量 (Tensor)。它还会将像素值从 [0, 255] 归一化到 [0.0, 1.0]。
-        transforms.Normalize([0.5]*3, [0.5]*3) # 对图像张量进行标准化。它会将每个颜色通道的像素值调整为均值为 0.5，标准差为 0.5。这意味着像素值将被缩放到 [-1, 1] 之间。这有助于模型的训练收敛。
-    ]),
-    'val': transforms.Compose([ # 对验证数据应用一系列转换操作（通常比训练集少，因为验证集不需要数据增强）：
-        transforms.Resize((224, 224)), # 将图像大小统一调整为 224x224 像素。
-        transforms.ToTensor(), # 将图像转换为 PyTorch 张量。
-        transforms.Normalize([0.5]*3, [0.5]*3) # 对图像张量进行标准化。
-    ]),
-}
+# --------- 定义自己的Dataset 和 collate_fn ---------
+# ... (这部分不变)
+class MyDataset(Dataset):
+    def __init__(self, metadata_file: str, transform: transforms.Compose = None):
+        if not os.path.exists(metadata_file):
+             raise FileNotFoundError(f"元数据文件未找到：{metadata_file}")
+        self.metadata_file=metadata_file
+        self.transform=transform
+        self.data = self._load_metadata()
 
-# ---------- 加载数据 ---------- # 注释，表示以下是数据加载的设置。
-batch_size = 4 # 定义每个训练或验证批次中包含的图像数量。较大的批次大小通常能更稳定地估计梯度，但可能需要更多内存。
-image_datasets = { # 创建一个字典，用于存储训练集和验证集的图像数据集。
-    x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) # 对于 'train' 和 'val' 键：
-    # `os.path.join(data_dir, x)` 会拼接出完整的数据集路径，例如 'dataset/train' 和 'dataset/val'。
-    # `datasets.ImageFolder` 会自动识别这些路径下的子文件夹作为类别，并加载其中的图像。
-    # `data_transforms[x]` 会应用对应的数据转换规则。
-    for x in ['train', 'val'] # 这是一个字典推导式，循环遍历 'train' 和 'val'。
-}
-dataloaders = { # 创建一个字典，用于存储训练集和验证集的 DataLoader。
-    x: DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True) # 对于 'train' 和 'val' 键：
-    # `DataLoader` 接收一个数据集 (`image_datasets[x]`)，并根据 `batch_size` 和 `shuffle` 参数创建可迭代的数据加载器。
-    # `shuffle=True` (通常用于训练集) 表示在每个 epoch 开始时打乱数据，以确保模型不会学习到数据的固定顺序。
-    for x in ['train', 'val']
-}
-dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']} # 创建一个字典，记录训练集和验证集中图像的总数量。
-class_names = image_datasets['train'].classes # 从训练数据集中获取所有类别的名称。`ImageFolder` 会根据子文件夹名称自动识别。
-print("Classes:", class_names) # 打印出识别到的类别名称。
+    def _load_metadata(self)-> list:
+        print(f"正在从 {self.metadata_file} 加载元数据...")
+        metadata_list = []
+        with open(self.metadata_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    metadata_list.append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    print(f"警告：跳过格式错误的行: {line.strip()}")
+        print(f"元数据加载完毕，共 {len(metadata_list)} 条记录。")
+        return metadata_list
+    
+    def __len__(self) -> int:
+        return len(self.data)
 
-# ---------- 构建模型 ---------- # 注释，表示以下是模型构建的部分。
-model = models.resnet18(pretrained=True) # 加载一个预训练的 ResNet18 模型。`pretrained=True` 表示下载并在 ImageNet 数据集上预训练好的权重。使用预训练模型可以显著加速训练，尤其是在数据量不足时。
-model.fc = nn.Linear(model.fc.in_features, 2) # 修改 ResNet18 的最后一层（全连接层，通常命名为 `fc`）。
-# `model.fc.in_features` 获取原始全连接层的输入特征数量。
-# `nn.Linear(input_features, output_features)` 创建一个新的全连接层。
-# 这里 `2` 表示输出类别数量，因为这是一个二分类任务（例如，猫和狗）。这样，模型就能适应你的特定任务。
-model = model.to(device) # 将模型移动到之前确定的设备上（GPU 或 CPU）。如果使用 GPU，这将允许模型在 GPU 上进行计算。
+    def __getitem__(self, idx: int) -> tuple:
+        record = self.data[idx]
+        image_path = record.get("image_path")
+        label = record.get("label")
+        if image_path is None or label is None:
+            raise KeyError(f"记录 {record} 中缺少 'image_path' 或 'label' 键。")
+        try:
+            image = Image.open(image_path).convert("RGB")
+        except FileNotFoundError:
+            return None, None
+        if self.transform:
+            image = self.transform(image)
+        label = torch.tensor(label, dtype=torch.long)
+        return image, label
 
-# ---------- 损失和优化器 ---------- # 注释，表示以下是损失函数和优化器的设置。
-criterion = nn.CrossEntropyLoss() # 定义损失函数。`nn.CrossEntropyLoss` 适用于多分类任务（包括二分类），它结合了 LogSoftmax 和 NLLLoss，常用于分类问题。
-optimizer = optim.Adam(model.parameters(), lr=1e-4) # 定义优化器。`optim.Adam` 是一种常用的优化算法，通常在实践中表现良好。
-# `model.parameters()` 告诉优化器要更新哪些参数（即模型的所有可学习权重和偏置）。
-# `lr=1e-4` 设置学习率（learning rate），控制每次参数更新的步长大小。
+def collate_fn_safe(batch):
+    batch = list(filter(lambda x: x[0] is not None, batch))
+    if len(batch) == 0:
+        return (None, None) 
+    return torch.utils.data.dataloader.default_collate(batch)
 
-# ---------- 训练函数 ---------- # 注释，表示以下是模型的训练函数定义。
-def train_model(model, criterion, optimizer, num_epochs=10): # 定义一个名为 `train_model` 的函数，接受模型、损失函数、优化器和训练轮数作为参数。
-    for epoch in range(num_epochs): # 开始训练循环，每个 `epoch` 遍历整个数据集一次。
-        print(f"\nEpoch {epoch+1}/{num_epochs}") # 打印当前是第几个 epoch。
-        print("-" * 30) # 打印一条分隔线，美化输出。
+def denormalize(tensor):
+    return tensor * 0.5 + 0.5
 
-        for phase in ['train', 'val']: # 在每个 epoch 中，我们分别进行训练阶段和验证阶段。
-            if phase == 'train': # 如果当前是训练阶段：
-                model.train() # 将模型设置为训练模式。这会启用像 Dropout 和 BatchNorm 这样的层，它们在训练和评估时行为不同。
-            else: # 如果当前是验证阶段：
-                model.eval() # 将模型设置为评估模式。这会关闭 Dropout，并使用 BatchNorm 层的统计均值和方差，而不是批次统计。
+# ---------- 训练函数 ----------
+def train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes, class_names, num_epochs=10):
+    wandb.watch(model, criterion, log="all", log_freq=10)
+    
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
 
-            running_loss, running_corrects = 0.0, 0 # 初始化当前阶段的累计损失和正确预测数。
+    for epoch in range(num_epochs):
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        print("-" * 30)
+        
+        # 【计时】记录整个 epoch 的墙上时钟时间
+        epoch_start_time = time.time()
 
-            for inputs, labels in dataloaders[phase]: # 遍历当前阶段的 DataLoader，逐批次获取输入图像和对应的真实标签。
-                inputs, labels = inputs.to(device), labels.to(device) # 将输入图像和标签数据移动到指定的设备（GPU 或 CPU）上，以便进行计算。
+        for phase in ['train', 'val']:
+            # 【计时】为每个阶段内的各个部分耗时创建一个字典来累加
+            phase_timings = {
+                "data_loading_time": 0.0,
+                "to_device_time": 0.0,
+                "forward_time": 0.0,
+                "backward_time": 0.0,
+                "optimizer_step_time": 0.0
+            }
+            
+            if phase == 'train':
+                model.train()
+            else:
+                model.eval()
 
-                optimizer.zero_grad() # **重要步骤：** 在每次反向传播之前，清零所有参数的梯度。
-                # PyTorch 默认会累积梯度，如果不清零，上一次的梯度会和当前的梯度叠加，导致错误的结果。
+            running_loss, running_corrects, num_samples = 0.0, 0, 0
+            
+            # 【计时】记录上一个批次结束的时间点，用于计算数据加载时间
+            batch_end_time = time.time()
 
-                with torch.set_grad_enabled(phase == 'train'): # 这是一个上下文管理器。
-                    # 如果 `phase == 'train'` (训练阶段)，`torch.set_grad_enabled(True)` 会启用梯度计算（默认行为）。
-                    # 如果 `phase == 'val'` (验证阶段)，`torch.set_grad_enabled(False)` 会禁用梯度计算。
-                    # 在验证阶段禁用梯度计算可以节省内存并加速推理，因为此时我们不需要计算梯度来更新权重。
-                    outputs = model(inputs) # **前向传播：** 将输入数据 `inputs` 传入模型，得到模型的输出 `outputs`（即 logit）。
-                    _, preds = torch.max(outputs, 1) # 从模型的输出中获取预测结果。`torch.max(outputs, 1)` 返回每行（每个样本）的最大值和其对应的索引。`_` 表示我们不关心最大值本身，只关心索引（即预测的类别）。
-                    loss = criterion(outputs, labels) # **计算损失：** 使用定义的损失函数 `criterion`，比较模型的 `outputs` 和真实的 `labels`，计算当前批次的损失。
+            progress_bar = tqdm(dataloaders[phase], desc=f"{phase.capitalize()} Epoch {epoch+1}")
+            for i, (inputs, labels) in enumerate(progress_bar):
+                # 【计时】数据加载/迭代时间 = 当前时间 - 上一批次处理结束的时间
+                phase_timings["data_loading_time"] += time.time() - batch_end_time
+                
+                if inputs is None:
+                    batch_end_time = time.time() # 更新时间以便下一次计算
+                    continue
+                
+                # --- GPU 操作计时开始 ---
+                if device.type == 'cuda':
+                    # 使用 torch.cuda.Event 进行精确的 GPU 计时
+                    start_event = torch.cuda.Event(enable_timing=True)
+                    end_event = torch.cuda.Event(enable_timing=True)
+                    
+                    # 计时: 数据从 CPU -> GPU
+                    torch.cuda.synchronize() # 保证之前的操作已完成
+                    start_event.record()
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    end_event.record()
+                    torch.cuda.synchronize()
+                    phase_timings["to_device_time"] += start_event.elapsed_time(end_event) / 1000.0 # 转换为秒
 
-                    if phase == 'train': # 如果当前是训练阶段：
-                        loss.backward() # **反向传播：** 计算损失相对于模型所有可学习参数的梯度。
-                        optimizer.step() # **更新权重：** 根据计算出的梯度和优化器规则，更新模型的权重。
+                else: # CPU 上的计时
+                    to_device_start = time.time()
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    phase_timings["to_device_time"] += time.time() - to_device_start
 
-                running_loss += loss.item() * inputs.size(0) # 累加当前批次的损失到 `running_loss`。`loss.item()` 获取单个损失值（Python 数值），`inputs.size(0)` 是当前批次的图像数量。
-                running_corrects += (preds == labels).sum().item() # 累加当前批次中正确预测的数量。`(preds == labels)` 会生成一个布尔张量，`.sum()` 计算其中 True 的数量，`.item()` 转换为 Python 数值。
+                num_samples += inputs.size(0)
+                optimizer.zero_grad()
+                
+                with torch.set_grad_enabled(phase == 'train'):
+                    # 计时: 模型前向传播
+                    if device.type == 'cuda':
+                        start_event.record()
+                    else:
+                        forward_start = time.time()
 
-            epoch_loss = running_loss / dataset_sizes[phase] # 计算当前 epoch 的平均损失（总损失除以数据总数）。
-            epoch_acc = running_corrects / dataset_sizes[phase] # 计算当前 epoch 的准确率（正确预测数除以数据总数）。
-            print(f"{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}") # 打印当前阶段的损失和准确率，保留四位小数。
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
 
-    return model # 训练完成后，返回训练好的模型。
+                    if device.type == 'cuda':
+                        end_event.record()
+                        torch.cuda.synchronize()
+                        phase_timings["forward_time"] += start_event.elapsed_time(end_event) / 1000.0
+                    else:
+                        phase_timings["forward_time"] += time.time() - forward_start
 
-# ---------- 启动训练 ---------- # 注释，表示以下是启动训练过程。
-model = train_model(model, criterion, optimizer, num_epochs=10) # 调用 `train_model` 函数，开始模型的训练过程，这里设置为训练 10 个 epoch。训练好的模型会覆盖原来的 `model` 变量。
+                    if phase == 'train':
+                        # 计时: 模型反向传播
+                        if device.type == 'cuda':
+                            start_event.record()
+                        else:
+                            backward_start = time.time()
+                        
+                        loss.backward()
 
-# ---------- 保存模型 ---------- # 注释，表示以下是保存模型的步骤。
-model_path = os.path.join(model_dir, "resnet18_catdog.pth") # 构建模型保存的完整路径和文件名。
-torch.save(model.state_dict(), model_path) # 保存模型的**状态字典**。`model.state_dict()` 包含了模型所有学习到的参数（权重和偏置）。
-# 通常建议只保存状态字典，而不是整个模型对象，因为它更灵活，且更不容易受代码结构变化的影响。
-print("Model saved to:", model_path) # 打印模型保存的路径。
+                        if device.type == 'cuda':
+                            end_event.record()
+                            torch.cuda.synchronize()
+                            phase_timings["backward_time"] += start_event.elapsed_time(end_event) / 1000.0
+                        else:
+                            phase_timings["backward_time"] += time.time() - backward_start
+
+                        # 计时: 优化器更新
+                        if device.type == 'cuda':
+                            start_event.record()
+                        else:
+                            optimizer_start = time.time()
+
+                        optimizer.step()
+
+                        if device.type == 'cuda':
+                            end_event.record()
+                            torch.cuda.synchronize()
+                            phase_timings["optimizer_step_time"] += start_event.elapsed_time(end_event) / 1000.0
+                        else:
+                            phase_timings["optimizer_step_time"] += time.time() - optimizer_start
+
+
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+                
+                # 【计时】更新批次结束时间点
+                batch_end_time = time.time()
+
+
+            if num_samples == 0: continue
+
+            epoch_loss = running_loss / num_samples
+            epoch_acc = running_corrects.double() / num_samples
+            
+            # 【计时】打印每个阶段的详细耗时
+            print(f"\n--- {phase.capitalize()} Phase Timing Breakdown (Epoch {epoch+1}) ---")
+            total_phase_time = sum(phase_timings.values())
+            for key, value in phase_timings.items():
+                print(f"{key:<22}: {value:.4f}s ({(value/total_phase_time)*100:.2f}%)")
+            print("-------------------------------------------------")
+
+            print(f"{phase.capitalize()} Loss: {epoch_loss:.4f}  Acc: {epoch_acc:.4f}")
+            
+            if phase == 'val' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = copy.deepcopy(model.state_dict())
+                model_path = os.path.join(model_dir, "resnet18_best.pth")
+                torch.save(model.state_dict(), model_path)
+                print(f"新最佳模型已保存至 {model_path}，准确率: {best_acc:.4f}")
+
+            log_data = {f"{phase}_loss": epoch_loss, f"{phase}_accuracy": epoch_acc}
+            # 【计时】将详细耗时记录到 wandb
+            for key, value in phase_timings.items():
+                log_data[f"timing/{phase}_{key}"] = value
+            wandb.log(log_data, step=epoch)
+        
+        # 【计时】在 epoch 结束后计算并打印总耗时
+        epoch_time_elapsed = time.time() - epoch_start_time
+        print(f"\nEpoch {epoch+1} Wall-Time: {epoch_time_elapsed // 60:.0f}分 {epoch_time_elapsed % 60:.0f}秒")
+        wandb.log({"timing/epoch_total_wall_time": epoch_time_elapsed}, step=epoch)
+
+
+    print(f'\n最佳验证准确率 (Best val Acc): {best_acc:4f}')
+    model.load_state_dict(best_model_wts)
+    return model
+
+def main():
+    main_start_time = time.time() # 【计时】脚本总开始时间
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
+
+    config = {"learning_rate": 1e-4, "batch_size": 256, "num_epochs": 10, "architecture": "ResNet-18"}
+    wandb.init(project="pytorch-250725classification-profiled", config=config) # 新开一个项目
+
+    data_transforms = {
+        'train': transforms.Compose([transforms.Resize((224, 224)), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize([0.5]*3, [0.5]*3)]),
+        'val': transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize([0.5]*3, [0.5]*3)]),
+    }
+
+    # 【计时】数据加载设置部分的耗时
+    data_setup_start = time.time()
+    train_filename = "train_metadata.jsonl"
+    val_filename = "val_metadata.jsonl"
+    image_datasets = {
+        'train': MyDataset(os.path.join(data_dir, train_filename), data_transforms['train']),
+        'val': MyDataset(os.path.join(data_dir, val_filename), data_transforms['val'])
+    }
+    dataloaders = {
+        'train': DataLoader(image_datasets['train'], batch_size=wandb.config.batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn_safe, pin_memory=True),
+        'val': DataLoader(image_datasets['val'], batch_size=wandb.config.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn_safe, pin_memory=True)
+    }
+    print(f"--- Data setup took: {time.time() - data_setup_start:.4f}s ---")
+
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+    class_names = ['True_Image', 'False_Image'] 
+    
+    # 【计时】模型设置部分的耗时
+    model_setup_start = time.time()
+    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT) # 使用新API
+    model.fc = nn.Linear(model.fc.in_features, len(class_names))
+    model = model.to(device)
+    print(f"--- Model setup took: {time.time() - model_setup_start:.4f}s ---")
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate)
+
+    # 启动训练
+    model = train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes, class_names, num_epochs=wandb.config.num_epochs)
+
+    # 保存最终的最佳模型
+    model_path = os.path.join(model_dir, "resnet18_final_best.pth")
+    torch.save(model.state_dict(), model_path)
+    print("Final best model saved to:", model_path)
+
+    wandb.finish()
+    print(f"\n--- Total script execution time: {time.time() - main_start_time:.2f}s ---")
+
+if __name__ == '__main__':
+    main()
