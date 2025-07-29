@@ -5,11 +5,16 @@ import torch.optim as optim
 from torchvision import models, transforms
 from torch.utils.data import Dataset, DataLoader
 import wandb
+import yaml
+import argparse
+import shutil
 import json
 from PIL import Image
 import copy
 from tqdm import tqdm
 import time # 【计时】导入 time 模块
+from transformers import ViTForImageClassification
+
 
 # ---------- 路径配置 ----------
 # ... (这部分不变)
@@ -140,8 +145,9 @@ def train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes,
                         forward_start = time.time()
 
                     outputs = model(inputs)
-                    _, preds = torch.max(outputs, 1)
-                    loss = criterion(outputs, labels)
+                    logits=outputs.logits #ViT 模型返回一个对象，我们需要其 .logits 属性
+                    _, preds = torch.max(logits, 1)
+                    loss = criterion(logits, labels)
 
                     if device.type == 'cuda':
                         end_event.record()
@@ -206,7 +212,7 @@ def train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes,
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
-                model_path = os.path.join(model_dir, "resnet18_best.pth")
+                model_path = os.path.join(model_dir, "vit_base_best.pth")
                 torch.save(model.state_dict(), model_path)
                 print(f"新最佳模型已保存至 {model_path}，准确率: {best_acc:.4f}")
 
@@ -232,8 +238,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    config = {"learning_rate": 1e-4, "batch_size": 256, "num_epochs": 10, "architecture": "ResNet-18"}
-    wandb.init(project="pytorch-250725classification-profiled", config=config) # 新开一个项目
+    config = {"learning_rate": 1e-4, "batch_size": 128, "num_epochs": 10, "architecture": "vit-base-patch16-224'"}
+    wandb.init(project="pytorch-classification250729", config=config) # 新开一个项目
 
     data_transforms = {
         'train': transforms.Compose([transforms.Resize((224, 224)), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize([0.5]*3, [0.5]*3)]),
@@ -259,8 +265,13 @@ def main():
     
     # 【计时】模型设置部分的耗时
     model_setup_start = time.time()
-    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT) # 使用新API
-    model.fc = nn.Linear(model.fc.in_features, len(class_names))
+    #从hugging Face Hub中加载数据
+    model = ViTForImageClassification.from_pretrained(
+        'google/vit-base-patch16-224',
+        num_labels=len(class_names),     
+        ignore_mismatched_sizes=True  # 忽略预训练模型分类头尺寸不匹配的问题，库会自动为我们重新初始化分类头
+    )
+    
     model = model.to(device)
     print(f"--- Model setup took: {time.time() - model_setup_start:.4f}s ---")
 
@@ -271,7 +282,7 @@ def main():
     model = train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes, class_names, num_epochs=wandb.config.num_epochs)
 
     # 保存最终的最佳模型
-    model_path = os.path.join(model_dir, "resnet18_final_best.pth")
+    model_path = os.path.join(model_dir, "vit_final_best.pth")
     torch.save(model.state_dict(), model_path)
     print("Final best model saved to:", model_path)
 
