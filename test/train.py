@@ -1,3 +1,5 @@
+# train.py (Refactored)
+
 import os
 import torch
 import torch.nn as nn
@@ -12,19 +14,11 @@ import json
 from PIL import Image
 import copy
 from tqdm import tqdm
-import time # 【计时】导入 time 模块
+import time
 from transformers import ViTForImageClassification
 
 
-# ---------- 路径配置 ----------
-# ... (这部分不变)
-data_dir = 'new_dataset'
-model_dir = 'model'
-os.makedirs(model_dir, exist_ok=True)
-
-
-# --------- 定义自己的Dataset 和 collate_fn ---------
-# ... (这部分不变)
+# ---------- 数据集定义 (这部分不变) ----------
 class MyDataset(Dataset):
     def __init__(self, metadata_file: str, transform: transforms.Compose = None):
         if not os.path.exists(metadata_file):
@@ -69,12 +63,10 @@ def collate_fn_safe(batch):
         return (None, None) 
     return torch.utils.data.dataloader.default_collate(batch)
 
-def denormalize(tensor):
-    return tensor * 0.5 + 0.5
 
-# ---------- 训练函数 ----------
-def train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes, class_names, num_epochs=10):
-    wandb.watch(model, criterion, log="all", log_freq=10)
+# ---------- 训练函数 (修改了模型保存路径) ----------
+def train_model(model, criterion, optimizer, device, dataloaders, num_epochs, output_dir):
+    wandb.watch(model, criterion, log="all", log_freq=100)
     
     best_model_wts = copy.deepcopy(model.state_dict())
     best_acc = 0.0
@@ -82,212 +74,164 @@ def train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes,
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         print("-" * 30)
-        
-        # 【计时】记录整个 epoch 的墙上时钟时间
         epoch_start_time = time.time()
 
         for phase in ['train', 'val']:
-            # 【计时】为每个阶段内的各个部分耗时创建一个字典来累加
-            phase_timings = {
-                "data_loading_time": 0.0,
-                "to_device_time": 0.0,
-                "forward_time": 0.0,
-                "backward_time": 0.0,
-                "optimizer_step_time": 0.0
-            }
-            
-            if phase == 'train':
-                model.train()
-            else:
-                model.eval()
+            phase_timings = { "data_loading_time": 0.0, "to_device_time": 0.0, "forward_time": 0.0, "backward_time": 0.0, "optimizer_step_time": 0.0 }
+            if phase == 'train': model.train()
+            else: model.eval()
 
             running_loss, running_corrects, num_samples = 0.0, 0, 0
-            
-            # 【计时】记录上一个批次结束的时间点，用于计算数据加载时间
             batch_end_time = time.time()
-
             progress_bar = tqdm(dataloaders[phase], desc=f"{phase.capitalize()} Epoch {epoch+1}")
-            for i, (inputs, labels) in enumerate(progress_bar):
-                # 【计时】数据加载/迭代时间 = 当前时间 - 上一批次处理结束的时间
+            
+            for inputs, labels in progress_bar:
                 phase_timings["data_loading_time"] += time.time() - batch_end_time
-                
                 if inputs is None:
-                    batch_end_time = time.time() # 更新时间以便下一次计算
+                    batch_end_time = time.time()
                     continue
-                
-                # --- GPU 操作计时开始 ---
-                if device.type == 'cuda':
-                    # 使用 torch.cuda.Event 进行精确的 GPU 计时
-                    start_event = torch.cuda.Event(enable_timing=True)
-                    end_event = torch.cuda.Event(enable_timing=True)
-                    
-                    # 计时: 数据从 CPU -> GPU
-                    torch.cuda.synchronize() # 保证之前的操作已完成
-                    start_event.record()
-                    inputs, labels = inputs.to(device), labels.to(device)
-                    end_event.record()
-                    torch.cuda.synchronize()
-                    phase_timings["to_device_time"] += start_event.elapsed_time(end_event) / 1000.0 # 转换为秒
 
-                else: # CPU 上的计时
-                    to_device_start = time.time()
-                    inputs, labels = inputs.to(device), labels.to(device)
-                    phase_timings["to_device_time"] += time.time() - to_device_start
+                to_device_start = time.time()
+                inputs, labels = inputs.to(device), labels.to(device)
+                phase_timings["to_device_time"] += time.time() - to_device_start
 
                 num_samples += inputs.size(0)
                 optimizer.zero_grad()
                 
                 with torch.set_grad_enabled(phase == 'train'):
-                    # 计时: 模型前向传播
-                    if device.type == 'cuda':
-                        start_event.record()
-                    else:
-                        forward_start = time.time()
-
+                    forward_start = time.time()
                     outputs = model(inputs)
-                    logits=outputs.logits #ViT 模型返回一个对象，我们需要其 .logits 属性
+                    logits=outputs.logits
                     _, preds = torch.max(logits, 1)
                     loss = criterion(logits, labels)
-
-                    if device.type == 'cuda':
-                        end_event.record()
-                        torch.cuda.synchronize()
-                        phase_timings["forward_time"] += start_event.elapsed_time(end_event) / 1000.0
-                    else:
-                        phase_timings["forward_time"] += time.time() - forward_start
+                    phase_timings["forward_time"] += time.time() - forward_start
 
                     if phase == 'train':
-                        # 计时: 模型反向传播
-                        if device.type == 'cuda':
-                            start_event.record()
-                        else:
-                            backward_start = time.time()
-                        
+                        backward_start = time.time()
                         loss.backward()
-
-                        if device.type == 'cuda':
-                            end_event.record()
-                            torch.cuda.synchronize()
-                            phase_timings["backward_time"] += start_event.elapsed_time(end_event) / 1000.0
-                        else:
-                            phase_timings["backward_time"] += time.time() - backward_start
-
-                        # 计时: 优化器更新
-                        if device.type == 'cuda':
-                            start_event.record()
-                        else:
-                            optimizer_start = time.time()
-
+                        phase_timings["backward_time"] += time.time() - backward_start
+                        
+                        optimizer_start = time.time()
                         optimizer.step()
-
-                        if device.type == 'cuda':
-                            end_event.record()
-                            torch.cuda.synchronize()
-                            phase_timings["optimizer_step_time"] += start_event.elapsed_time(end_event) / 1000.0
-                        else:
-                            phase_timings["optimizer_step_time"] += time.time() - optimizer_start
-
+                        phase_timings["optimizer_step_time"] += time.time() - optimizer_start
 
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
-                
-                # 【计时】更新批次结束时间点
                 batch_end_time = time.time()
 
-
             if num_samples == 0: continue
-
             epoch_loss = running_loss / num_samples
             epoch_acc = running_corrects.double() / num_samples
             
-            # 【计时】打印每个阶段的详细耗时
             print(f"\n--- {phase.capitalize()} Phase Timing Breakdown (Epoch {epoch+1}) ---")
             total_phase_time = sum(phase_timings.values())
-            for key, value in phase_timings.items():
-                print(f"{key:<22}: {value:.4f}s ({(value/total_phase_time)*100:.2f}%)")
-            print("-------------------------------------------------")
-
+            if total_phase_time > 0:
+                for key, value in phase_timings.items():
+                    print(f"{key:<22}: {value:.4f}s ({(value/total_phase_time)*100:.2f}%)")
+            
             print(f"{phase.capitalize()} Loss: {epoch_loss:.4f}  Acc: {epoch_acc:.4f}")
             
+            # **修改点**: 保存模型到配置好的输出目录
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
-                model_path = os.path.join(model_dir, "vit_base_best.pth")
+                model_path = os.path.join(output_dir, "best_model.pth")
                 torch.save(model.state_dict(), model_path)
                 print(f"新最佳模型已保存至 {model_path}，准确率: {best_acc:.4f}")
 
             log_data = {f"{phase}_loss": epoch_loss, f"{phase}_accuracy": epoch_acc}
-            # 【计时】将详细耗时记录到 wandb
             for key, value in phase_timings.items():
                 log_data[f"timing/{phase}_{key}"] = value
             wandb.log(log_data, step=epoch)
         
-        # 【计时】在 epoch 结束后计算并打印总耗时
         epoch_time_elapsed = time.time() - epoch_start_time
         print(f"\nEpoch {epoch+1} Wall-Time: {epoch_time_elapsed // 60:.0f}分 {epoch_time_elapsed % 60:.0f}秒")
         wandb.log({"timing/epoch_total_wall_time": epoch_time_elapsed}, step=epoch)
-
 
     print(f'\n最佳验证准确率 (Best val Acc): {best_acc:4f}')
     model.load_state_dict(best_model_wts)
     return model
 
+# ---------- 主函数 (核心修改区域) ----------
 def main():
-    main_start_time = time.time() # 【计时】脚本总开始时间
+    # 1. 使用 argparse 解析命令行参数
+    parser = argparse.ArgumentParser(description="从YAML配置文件运行可复现的训练流程。")
+    parser.add_argument('--config', type=str, required=True, help='指向 config.yaml 文件的路径')
+    parser.add_argument('--shell_path', type=str, required=True, help='启动此脚本的 .sh 文件的路径')
+    args = parser.parse_args()
+
+    # 2. 加载并解析 YAML 配置文件
+    with open(args.config, 'r') as f:
+        config = yaml.safe_load(f)
+    print("配置加载成功!")
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
+    # 3. 创建唯一的实验输出目录
+    output_dir = os.path.join(config['experiment']['output_dir'], config['experiment']['name'])
+    os.makedirs(output_dir, exist_ok=True)
+    print(f" 所有输出将保存至: {output_dir}")
 
-    config = {"learning_rate": 1e-4, "batch_size": 128, "num_epochs": 10, "architecture": "vit-base-patch16-224'"}
-    wandb.init(project="pytorch-classification250729", config=config) # 新开一个项目
+    # 4. [核心] 备份配置文件和启动脚本，保证可复现性
+    shutil.copy(args.config, os.path.join(output_dir, 'config.yaml'))
+    shutil.copy(args.shell_path, os.path.join(output_dir, os.path.basename(args.shell_path)))
+    print(" 配置文件和启动脚本已备份。")
 
+    # 5. 初始化 Weights & Biases
+    wandb.init(
+        project=config['wandb']['project'],
+        entity=config['wandb']['entity'],
+        name=config['experiment']['name'],
+        config=config # 将所有配置上传到WandB
+    )
+    print(f" WandB 初始化成功! 访问 {wandb.run.url} 查看实时面板。")
+
+    # 6. 设置设备
+    if config['training']['device'] == 'auto':
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(config['training']['device'])
+    print(f"使用设备: {device}")
+
+    # 7. 准备数据
     data_transforms = {
         'train': transforms.Compose([transforms.Resize((224, 224)), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize([0.5]*3, [0.5]*3)]),
         'val': transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize([0.5]*3, [0.5]*3)]),
     }
-
-    # 【计时】数据加载设置部分的耗时
-    data_setup_start = time.time()
-    train_filename = "train_metadata.jsonl"
-    val_filename = "val_metadata.jsonl"
     image_datasets = {
-        'train': MyDataset(os.path.join(data_dir, train_filename), data_transforms['train']),
-        'val': MyDataset(os.path.join(data_dir, val_filename), data_transforms['val'])
+        'train': MyDataset(os.path.join(config['data']['base_dir'], config['data']['train_metadata']), data_transforms['train']),
+        'val': MyDataset(os.path.join(config['data']['base_dir'], config['data']['val_metadata']), data_transforms['val'])
     }
     dataloaders = {
-        'train': DataLoader(image_datasets['train'], batch_size=wandb.config.batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn_safe, pin_memory=True),
-        'val': DataLoader(image_datasets['val'], batch_size=wandb.config.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn_safe, pin_memory=True)
+        x: DataLoader(image_datasets[x], batch_size=config['training']['batch_size'], shuffle=(x=='train'), 
+                      num_workers=config['data']['num_workers'], collate_fn=collate_fn_safe, pin_memory=True)
+        for x in ['train', 'val']
     }
-    print(f"--- Data setup took: {time.time() - data_setup_start:.4f}s ---")
 
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
-    class_names = ['True_Image', 'False_Image'] 
-    
-    # 【计时】模型设置部分的耗时
-    model_setup_start = time.time()
-    #从hugging Face Hub中加载数据
+    # 8. 构建模型
     model = ViTForImageClassification.from_pretrained(
-        'google/vit-base-patch16-224',
-        num_labels=len(class_names),     
-        ignore_mismatched_sizes=True  # 忽略预训练模型分类头尺寸不匹配的问题，库会自动为我们重新初始化分类头
+        config['model']['architecture'],
+        num_labels=config['model']['num_classes'],     
+        ignore_mismatched_sizes=True
     )
-    
     model = model.to(device)
-    print(f"--- Model setup took: {time.time() - model_setup_start:.4f}s ---")
 
+    # 9. 定义损失函数和优化器
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
 
-    # 启动训练
-    model = train_model(model, criterion, optimizer, device, dataloaders, dataset_sizes, class_names, num_epochs=wandb.config.num_epochs)
+    # 10. 启动训练
+    main_start_time = time.time()
+    model = train_model(model, criterion, optimizer, device, dataloaders, 
+                        num_epochs=config['training']['epochs'],
+                        output_dir=output_dir)
 
-    # 保存最终的最佳模型
-    model_path = os.path.join(model_dir, "vit_final_best.pth")
-    torch.save(model.state_dict(), model_path)
-    print("Final best model saved to:", model_path)
-
+    # 11. 保存最终模型并结束
+    final_model_path = os.path.join(output_dir, "final_model.pth")
+    torch.save(model.state_dict(), final_model_path)
+    print(f"最终模型已保存至: {final_model_path}")
+    
     wandb.finish()
-    print(f"\n--- Total script execution time: {time.time() - main_start_time:.2f}s ---")
+    print(f"\n--- 脚本总执行时间: {(time.time() - main_start_time)/60:.2f} 分钟 ---")
+
 
 if __name__ == '__main__':
     main()

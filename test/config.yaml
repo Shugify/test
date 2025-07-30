@@ -1,0 +1,32 @@
+# config.yaml
+
+# 1. Weights & Biases (WandB) 配置
+wandb:
+  project: "pytorch-classification-vit" # WandB 项目名称
+  entity: "team050723"      # 你的WandB用户名或团队名
+
+# 2. 实验管理与路径配置
+experiment:
+  name: "ViT-FineTune-Run1"          # 本次实验的名称 (将用作输出目录名和WandB的Run Name)
+  output_dir: "./experimentsconfig"         # 所有实验输出的根目录
+
+# 3. 数据集路径配置
+data:
+  base_dir: "new_dataset"             # 数据集根目录
+  train_metadata: "train_metadata.jsonl"
+  val_metadata: "val_metadata.jsonl"
+  num_workers: 4                      # DataLoader的工作线程数
+
+# 4. 模型配置
+model:
+  # Hugging Face Hub 上的模型名称
+  architecture: "google/vit-base-patch16-224"
+  num_classes: 2
+
+# 5. 训练超参数
+training:
+  device: "auto"                      # "auto", "cuda", or "cpu"
+  epochs: 10
+  batch_size: 64
+  learning_rate: 0.0001
+  optimizer: "Adam"
