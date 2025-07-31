@@ -23,7 +23,7 @@ def generate_metadata(dataset_root, split_name, output_filename):
         # 遍历当前文件夹下的所有文件
         for filename in files:
             # 确保我们只处理图片文件，避免处理如 .DS_Store 等隐藏文件
-            if not filename.lower().endswith('.png'):
+            if not filename.lower().endswith(('.png', '.jpg')):
                 continue
 
             # 获取从 split_path (例如 '.../idimage_v1/train') 到
@@ -73,4 +73,4 @@ if __name__ == '__main__':
 
     # 为测试集生成元数据
     test_output_file = os.path.join(jsonl_file_path, "val_metadata.jsonl")
-    generate_metadata(dataset_root_path, 'val', test_output_file)
+    generate_metadata(dataset_root_path, 'test', test_output_file)
