@@ -1,0 +1,245 @@
+Using device: cuda
+正在从 new_dataset/train_metadata.jsonl 加载元数据...
+元数据加载完毕，共 21027 条记录。
+正在从 new_dataset/val_metadata.jsonl 加载元数据...
+元数据加载完毕，共 3100 条记录。
+--- Data setup took: 0.1586s ---
+--- Model setup took: 1.1676s ---
+
+Epoch 1/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 1) ---
+data_loading_time     : 250.4582s (92.24%)
+to_device_time        : 1.0304s (0.38%)
+forward_time          : 8.1590s (3.00%)
+backward_time         : 11.7697s (4.33%)
+optimizer_step_time   : 0.1055s (0.04%)
+-------------------------------------------------
+Train Loss: 0.1095  Acc: 0.9541
+
+--- Val Phase Timing Breakdown (Epoch 1) ---
+data_loading_time     : 52.6377s (98.53%)
+to_device_time        : 0.1523s (0.29%)
+forward_time          : 0.6348s (1.19%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.1524  Acc: 0.8700
+新最佳模型已保存至 model/resnet18_best.pth，准确率: 0.8700
+
+Epoch 1 Wall-Time: 5分 26秒
+
+Epoch 2/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 2) ---
+data_loading_time     : 246.5037s (93.89%)
+to_device_time        : 1.0306s (0.39%)
+forward_time          : 5.0333s (1.92%)
+backward_time         : 9.8989s (3.77%)
+optimizer_step_time   : 0.0744s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0082  Acc: 0.9974
+
+--- Val Phase Timing Breakdown (Epoch 2) ---
+data_loading_time     : 52.8661s (98.57%)
+to_device_time        : 0.1520s (0.28%)
+forward_time          : 0.6168s (1.15%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.4011  Acc: 0.8719
+新最佳模型已保存至 model/resnet18_best.pth，准确率: 0.8719
+
+Epoch 2 Wall-Time: 5分 17秒
+
+Epoch 3/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 3) ---
+data_loading_time     : 246.9483s (93.87%)
+to_device_time        : 1.0303s (0.39%)
+forward_time          : 5.1264s (1.95%)
+backward_time         : 9.9083s (3.77%)
+optimizer_step_time   : 0.0721s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0026  Acc: 0.9995
+
+--- Val Phase Timing Breakdown (Epoch 3) ---
+data_loading_time     : 55.4857s (98.62%)
+to_device_time        : 0.1525s (0.27%)
+forward_time          : 0.6240s (1.11%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.2721  Acc: 0.8713
+
+Epoch 3 Wall-Time: 5分 20秒
+
+Epoch 4/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 4) ---
+data_loading_time     : 241.9173s (93.82%)
+to_device_time        : 1.0308s (0.40%)
+forward_time          : 4.9247s (1.91%)
+backward_time         : 9.9018s (3.84%)
+optimizer_step_time   : 0.0719s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0012  Acc: 0.9999
+
+--- Val Phase Timing Breakdown (Epoch 4) ---
+data_loading_time     : 55.2429s (98.41%)
+to_device_time        : 0.1520s (0.27%)
+forward_time          : 0.7389s (1.32%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.4902  Acc: 0.8735
+新最佳模型已保存至 model/resnet18_best.pth，准确率: 0.8735
+
+Epoch 4 Wall-Time: 5分 15秒
+
+Epoch 5/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 5) ---
+data_loading_time     : 241.2052s (93.80%)
+to_device_time        : 1.0307s (0.40%)
+forward_time          : 4.8867s (1.90%)
+backward_time         : 9.9468s (3.87%)
+optimizer_step_time   : 0.0715s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0014  Acc: 0.9998
+
+--- Val Phase Timing Breakdown (Epoch 5) ---
+data_loading_time     : 52.7796s (98.39%)
+to_device_time        : 0.1521s (0.28%)
+forward_time          : 0.7140s (1.33%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.3294  Acc: 0.8723
+
+Epoch 5 Wall-Time: 5分 11秒
+
+Epoch 6/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 6) ---
+data_loading_time     : 249.8001s (93.98%)
+to_device_time        : 1.0297s (0.39%)
+forward_time          : 4.9957s (1.88%)
+backward_time         : 9.9053s (3.73%)
+optimizer_step_time   : 0.0725s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0007  Acc: 1.0000
+
+--- Val Phase Timing Breakdown (Epoch 6) ---
+data_loading_time     : 55.5145s (98.46%)
+to_device_time        : 0.1521s (0.27%)
+forward_time          : 0.7135s (1.27%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.6487  Acc: 0.8729
+
+Epoch 6 Wall-Time: 5分 23秒
+
+Epoch 7/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 7) ---
+data_loading_time     : 239.0269s (93.76%)
+to_device_time        : 1.0311s (0.40%)
+forward_time          : 4.9313s (1.93%)
+backward_time         : 9.8802s (3.88%)
+optimizer_step_time   : 0.0687s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0003  Acc: 1.0000
+
+--- Val Phase Timing Breakdown (Epoch 7) ---
+data_loading_time     : 55.7468s (98.46%)
+to_device_time        : 0.1519s (0.27%)
+forward_time          : 0.7206s (1.27%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.5945  Acc: 0.8726
+
+Epoch 7 Wall-Time: 5分 12秒
+
+Epoch 8/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 8) ---
+data_loading_time     : 243.8156s (93.87%)
+to_device_time        : 1.0303s (0.40%)
+forward_time          : 4.9115s (1.89%)
+backward_time         : 9.9165s (3.82%)
+optimizer_step_time   : 0.0705s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0003  Acc: 1.0000
+
+--- Val Phase Timing Breakdown (Epoch 8) ---
+data_loading_time     : 55.8963s (98.49%)
+to_device_time        : 0.1521s (0.27%)
+forward_time          : 0.7040s (1.24%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.5837  Acc: 0.8716
+
+Epoch 8 Wall-Time: 5分 17秒
+
+Epoch 9/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 9) ---
+data_loading_time     : 240.6131s (93.75%)
+to_device_time        : 1.0319s (0.40%)
+forward_time          : 5.0113s (1.95%)
+backward_time         : 9.9311s (3.87%)
+optimizer_step_time   : 0.0764s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0002  Acc: 1.0000
+
+--- Val Phase Timing Breakdown (Epoch 9) ---
+data_loading_time     : 56.5167s (98.52%)
+to_device_time        : 0.1521s (0.27%)
+forward_time          : 0.6981s (1.22%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.6866  Acc: 0.8716
+
+Epoch 9 Wall-Time: 5分 14秒
+
+Epoch 10/10
+------------------------------
+
+--- Train Phase Timing Breakdown (Epoch 10) ---
+data_loading_time     : 242.0729s (93.80%)
+to_device_time        : 1.0308s (0.40%)
+forward_time          : 4.9736s (1.93%)
+backward_time         : 9.9267s (3.85%)
+optimizer_step_time   : 0.0704s (0.03%)
+-------------------------------------------------
+Train Loss: 0.0002  Acc: 1.0000
+
+--- Val Phase Timing Breakdown (Epoch 10) ---
+data_loading_time     : 56.0907s (98.47%)
+to_device_time        : 0.1521s (0.27%)
+forward_time          : 0.7173s (1.26%)
+backward_time         : 0.0000s (0.00%)
+optimizer_step_time   : 0.0000s (0.00%)
+-------------------------------------------------
+Val Loss: 1.7058  Acc: 0.8723
+
+Epoch 10 Wall-Time: 5分 16秒
+
+最佳验证准确率 (Best val Acc): 0.873548
+Final best model saved to: model/resnet18_final_best.pth
+
+--- Total script execution time: 3179.63s ---
